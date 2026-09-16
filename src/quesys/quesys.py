@@ -104,7 +104,7 @@ def job_start(settings: JobSettings):
         else:
             shutil.copy2(input_object, destination_path, follow_symlinks=False)
     write_cleanup(settings)
-    os.makedirs(settings.outdir)
+    os.makedirs(settings.outdir, exist_ok=True)
     os.chdir(settings.jobdir)
     os.environ["PATH"] = ":".join([settings.jobdir, os.environ["PATH"]])
 
