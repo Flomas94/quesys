@@ -227,16 +227,16 @@ def write_cleanup(settings: JobSettings):
     if settings.copy_on_cleanup:
         lines.extend(
             [
-                f"ssh -q {settings.user}@{settings.node} 'find {settings.jobdir}/. -type f -executable -exec rm -r {{}} \\;'",
-                f"scp -r -q -o LogLevel=QUIET {settings.node}:{settings.jobdir}/. {settings.outdir}",
+                f"ssh -q {settings.user}@{settings.node}.local 'find {settings.jobdir}/. -type f -executable -exec rm -r {{}} \\;'",
+                f"scp -r -q -o LogLevel=QUIET {settings.node}.local:{settings.jobdir}/. {settings.outdir}",
             ]
         )
 
     if os.path.isfile(NODECLEAN) and os.access(NODECLEAN, os.R_OK):
         lines.extend(
             [
-                f"if ssh -q {settings.user}@{settings.node} exit; then",
-                f"  ssh {settings.user}@{settings.node} 'bash {NODECLEAN} {settings.jobid} {settings.jobdir}'",
+                f"if ssh -q {settings.user}@{settings.node}.local exit; then",
+                f"  ssh {settings.user}@{settings.node}.local 'bash {NODECLEAN} {settings.jobid} {settings.jobdir}'",
                 f"  echo 'Cleaned up Job {settings.jobid} succesfully!'",
                 "else",
                 f"  scancel {settings.jobid}",
@@ -250,8 +250,8 @@ def write_cleanup(settings: JobSettings):
             [
                 "echo 'Nodeclean script missing! Using old routine for cleanup ...'",
                 f"scancel {settings.jobid}",
-                f"if ssh -q {settings.user}@{settings.node} exit; then",
-                f"  ssh {settings.user}@{settings.node} 'rm -r -f {settings.jobdir}'",
+                f"if ssh -q {settings.user}@{settings.node}.local exit; then",
+                f"  ssh {settings.user}@{settings.node}.local 'rm -r -f {settings.jobdir}'",
                 f"  echo 'Cleaned up Job {settings.jobid} succesfully!'",
                 "else",
                 f"  echo 'Cleanup failed! Cancelled Job {settings.jobid}.'",
