@@ -90,7 +90,7 @@ def job_start(settings: JobSettings):
     settings = _check_variables(settings)
     settings.starttime = datetime.now(ZoneInfo(TIMEZONE))
     settings.submittime = datetime.fromisoformat(
-        ssh_command(f"sacct -j {settings.jobid} -o submit -n")
+        ssh_command(f"sacct -j {settings.jobid} -o submit -n").strip()
     ).replace(tzinfo=ZoneInfo("Europe/Berlin"))
     introduction(settings)
     os.makedirs(settings.jobdir)
