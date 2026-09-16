@@ -1,3 +1,4 @@
+import getpass
 import os
 import re
 import shutil
@@ -17,7 +18,7 @@ NODECLEAN = "/mnt/software/slurm/nodeclean.sh"
 
 class JobSettings:
     def __init__(self):
-        self.user = os.getlogin()
+        self.user = getpass.getuser()
         self.jobid = os.getenv("SLURM_JOB_ID", "")
         self.jobname = os.getenv("SLURM_JOB_NAME", "")
         self.node = os.getenv("SLURMD_NODENAME", "")
