@@ -43,6 +43,42 @@ job_start(settings)
 job_end(settings)
 ```
 
+## Configuration
+
+`JobSettings` reads an optional INI file. An explicitly supplied file must exist:
+
+```python
+settings = JobSettings(config_file="quesys.conf")
+```
+
+Without an explicit path, the first existing file among `quesys.conf`,
+`quesys.ini`, and `~/.config/quesys/config.ini` is used. Values in the
+`[quesys]` section can override the generic package defaults:
+
+```ini
+[quesys]
+TIMEZONE = UTC
+LOGIN_NODE = login.example.org
+NODECLEAN = /opt/slurm/nodeclean.sh
+workdir = /scratch/{user}
+jobdir = {workdir}/{jobid}
+outdir = {submitdir}/{jobid}out
+maxfilesize = 500M
+
+[commands]
+# Commands set to true are executed through LOGIN_NODE.
+sacct = true
+```
+
+Cluster-specific configuration files such as `quesys.conf` should not be
+committed to the repository. The package itself contains no cluster-specific
+login node, node-cleanup path, or work directory.
+
+Path values support `{user}`, `{jobid}`, `{jobname}`, `{node}`, `{submitdir}`,
+and `{workdir}`. By default only `sacct` requires the login node; commands
+listed as `false` run locally. The cleanup script's SSH connection to the
+compute node is independent of this setting.
+
 ## Package layout
 
 ```text

@@ -1,32 +1,45 @@
 import getpass
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
+from configparser import ConfigParser
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from humanfriendly import format_size, parse_size
 
-TIMEZONE = "Europe/Berlin"
-
-LOGIN_NODE = "192.168.1.109"
-
-NODECLEAN = "/mnt/software/slurm/nodeclean.sh"
+DEFAULT_CONFIG_PATHS = (
+    "quesys.conf",
+    "quesys.ini",
+    os.path.expanduser("~/.config/quesys/config.ini"),
+)
+DEFAULT_TIMEZONE = "UTC"
+DEFAULT_WORKDIR = "{submitdir}"
+DEFAULT_JOBDIR = "{workdir}/{jobid}"
+DEFAULT_OUTDIR = "{submitdir}/{jobid}out"
+DEFAULT_MAXFILESIZE = "500M"
 
 
 class JobSettings:
-    def __init__(self):
+    def __init__(self, config_file: str | os.PathLike[str] | None = None):
         self.user = getpass.getuser()
         self.jobid = os.getenv("SLURM_JOB_ID", "")
         self.jobname = os.getenv("SLURM_JOB_NAME", "")
         self.node = os.getenv("SLURMD_NODENAME", "")
         self.submitdir = os.getenv("SLURM_SUBMIT_DIR", "")
-        self.workdir = f"/scr/{self.user}"
-        self.jobdir = f"{self.workdir}/{self.jobid}"
-        self.outdir = f"{self.submitdir}/{self.jobid}out"
-        self.maxfilesize = "500M"
+        self.timezone = DEFAULT_TIMEZONE
+        self.login_node = ""
+        self.nodeclean = ""
+        self.workdir = ""
+        self.jobdir = ""
+        self.outdir = ""
+        self.maxfilesize = DEFAULT_MAXFILESIZE
+        self.ssh_commands: dict[str, bool] = {}
 
         self.input: list[str] = []
         self.output: list[str] = []
@@ -36,6 +49,68 @@ class JobSettings:
         self.submittime: datetime
 
         self.copy_on_cleanup = False
+        self._load_config(config_file)
+
+    def _load_config(self, config_file: str | os.PathLike[str] | None) -> None:
+        parser = ConfigParser(interpolation=None)
+        if config_file is not None:
+            config_path = Path(config_file)
+            if not config_path.is_file():
+                raise FileNotFoundError(
+                    f"Quesys configuration not found: {config_path}"
+                )
+            parser.read(config_path)
+        else:
+            for path in DEFAULT_CONFIG_PATHS:
+                if os.path.isfile(path):
+                    parser.read(path)
+                    break
+
+        settings = parser["quesys"] if parser.has_section("quesys") else {}
+        self.timezone = settings.get("TIMEZONE", self.timezone)
+        self.login_node = settings.get("LOGIN_NODE", self.login_node)
+        self.nodeclean = settings.get("NODECLEAN", self.nodeclean)
+        self.maxfilesize = settings.get("maxfilesize", self.maxfilesize)
+
+        self._set_paths(
+            settings.get("workdir", DEFAULT_WORKDIR),
+            settings.get("jobdir", DEFAULT_JOBDIR),
+            settings.get("outdir", DEFAULT_OUTDIR),
+        )
+
+        if parser.has_section("commands"):
+            for command, value in parser.items("commands"):
+                try:
+                    self.ssh_commands[command] = parser.getboolean("commands", command)
+                except ValueError as error:
+                    raise ValueError(
+                        f"Invalid SSH setting for command '{command}': {value!r}"
+                    ) from error
+
+    def _set_paths(
+        self, workdir_template: str, jobdir_template: str, outdir_template: str
+    ) -> None:
+        self.workdir = self._format_path(workdir_template)
+        self.jobdir = self._format_path(jobdir_template)
+        self.outdir = self._format_path(outdir_template)
+        if not os.path.isabs(self.outdir):
+            self.outdir = os.path.join(self.submitdir, self.outdir)
+
+    def _format_path(self, value: str) -> str:
+        try:
+            return value.format(
+                user=self.user,
+                jobid=self.jobid,
+                jobname=self.jobname,
+                node=self.node,
+                submitdir=self.submitdir,
+                workdir=self.workdir,
+            )
+        except KeyError as error:
+            raise ValueError(f"Unknown path placeholder: {error.args[0]}") from error
+
+    def requires_ssh(self, command: str) -> bool:
+        return self.ssh_commands.get(command, False)
 
 
 def check_slurm():
@@ -45,8 +120,13 @@ def check_slurm():
         sys.exit(1)
 
 
-def ssh_command(command: str) -> str:
-    full_command = ["ssh", LOGIN_NODE, "-T", command]
+def run_command(
+    command: Sequence[str], settings: JobSettings, command_name: str
+) -> str:
+    if settings.requires_ssh(command_name):
+        full_command = ["ssh", settings.login_node, "-T", shlex.join(command)]
+    else:
+        full_command = list(command)
     result = subprocess.run(full_command, capture_output=True, text=True, check=True)
     return result.stdout
 
@@ -61,19 +141,20 @@ def _check_variables(settings: JobSettings) -> JobSettings:
         print(f"Invalid workdir! {settings.workdir} was not found.")
         sys.exit(1)
 
-    if not os.path.isabs(settings.outdir):
-        settings.outdir = f"{settings.submitdir}/{settings.outdir}"
-
     jobdir_real = os.path.realpath(settings.jobdir)
     outdir_real = os.path.realpath(settings.outdir)
 
     if jobdir_real == outdir_real:
-        print(f"Invalid output directory! jobdir and outdir are identical: {settings.jobdir}")
+        print(
+            f"Invalid output directory! jobdir and outdir are identical: {settings.jobdir}"
+        )
         sys.exit(1)
 
     try:
         if os.path.commonpath([jobdir_real, outdir_real]) == jobdir_real:
-            print(f"Invalid output directory! outdir overlaps with jobdir: {settings.outdir}")
+            print(
+                f"Invalid output directory! outdir overlaps with jobdir: {settings.outdir}"
+            )
             sys.exit(1)
     except ValueError:
         pass
@@ -88,10 +169,14 @@ def _check_variables(settings: JobSettings) -> JobSettings:
 def job_start(settings: JobSettings):
     check_slurm()
     settings = _check_variables(settings)
-    settings.starttime = datetime.now(ZoneInfo(TIMEZONE))
+    settings.starttime = datetime.now(ZoneInfo(settings.timezone))
     settings.submittime = datetime.fromisoformat(
-        ssh_command(f"sacct -j {settings.jobid} -o submit -n").strip()
-    ).replace(tzinfo=ZoneInfo("Europe/Berlin"))
+        run_command(
+            ["sacct", "-j", settings.jobid, "-o", "submit", "-n"],
+            settings,
+            "sacct",
+        ).strip()
+    ).replace(tzinfo=ZoneInfo(settings.timezone))
     introduction(settings)
     os.makedirs(settings.jobdir)
     for input_object in settings.input:
@@ -111,7 +196,7 @@ def job_start(settings: JobSettings):
 
 def job_end(settings: JobSettings):
 
-    settings.endtime = datetime.now(ZoneInfo(TIMEZONE))
+    settings.endtime = datetime.now(ZoneInfo(settings.timezone))
     gather(settings)
     os.chdir(settings.workdir)
     shutil.rmtree(settings.jobdir)
@@ -232,11 +317,11 @@ def write_cleanup(settings: JobSettings):
             ]
         )
 
-    if os.path.isfile(NODECLEAN) and os.access(NODECLEAN, os.R_OK):
+    if os.path.isfile(settings.nodeclean) and os.access(settings.nodeclean, os.R_OK):
         lines.extend(
             [
                 f"if ssh -q {settings.user}@{settings.node}.local exit; then",
-                f"  ssh {settings.user}@{settings.node}.local 'bash {NODECLEAN} {settings.jobid} {settings.jobdir}'",
+                f"  ssh {settings.user}@{settings.node}.local 'bash {settings.nodeclean} {settings.jobid} {settings.jobdir}'",
                 f"  echo 'Cleaned up Job {settings.jobid} succesfully!'",
                 "else",
                 f"  scancel {settings.jobid}",
