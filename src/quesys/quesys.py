@@ -23,6 +23,7 @@ DEFAULT_WORKDIR = "{submitdir}"
 DEFAULT_JOBDIR = "{workdir}/{jobid}"
 DEFAULT_OUTDIR = "{submitdir}/{jobid}out"
 DEFAULT_MAXFILESIZE = "500M"
+DEFAULT_NODECLEAN = str(Path(__file__).with_name("nodeclean.sh"))
 
 
 class JobSettings:
@@ -34,7 +35,7 @@ class JobSettings:
         self.submitdir = os.getenv("SLURM_SUBMIT_DIR", "")
         self.timezone = DEFAULT_TIMEZONE
         self.login_node = ""
-        self.nodeclean = ""
+        self.nodeclean = DEFAULT_NODECLEAN
         self.workdir = ""
         self.jobdir = ""
         self.outdir = ""

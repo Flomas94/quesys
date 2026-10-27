@@ -90,6 +90,7 @@ quesys/
 ├── src/
 │   └── quesys/
 │       ├── __init__.py
+│       ├── nodeclean.sh
 │       └── quesys.py
 └── .venv/   # local virtual environment for development
 ```
