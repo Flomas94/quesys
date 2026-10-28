@@ -190,7 +190,7 @@ def job_start(settings: JobSettings):
         ).strip()
     ).replace(tzinfo=ZoneInfo(settings.timezone))
     introduction(settings)
-    os.makedirs(settings.jobdir)
+    os.makedirs(settings.jobdir, exist_ok=True)
     for input_object in settings.input:
         input_object_name = os.path.basename(os.path.normpath(input_object))
         destination_path = os.path.join(settings.jobdir, input_object_name)
