@@ -24,6 +24,7 @@ DEFAULT_JOBDIR = "{workdir}/{jobid}"
 DEFAULT_OUTDIR = "{submitdir}/{jobid}out"
 DEFAULT_MAXFILESIZE = "500M"
 DEFAULT_NODECLEAN = str(Path(__file__).with_name("nodeclean.sh"))
+DEFAULT_SACCT_CLUSTER = ""
 
 
 class JobSettings:
@@ -36,6 +37,7 @@ class JobSettings:
         self.timezone = DEFAULT_TIMEZONE
         self.login_node = ""
         self.nodeclean = DEFAULT_NODECLEAN
+        self.sacct_cluster = DEFAULT_SACCT_CLUSTER
         self.workdir = ""
         self.jobdir = ""
         self.outdir = ""
@@ -71,6 +73,7 @@ class JobSettings:
         self.timezone = settings.get("TIMEZONE", self.timezone)
         self.login_node = settings.get("LOGIN_NODE", self.login_node)
         self.nodeclean = settings.get("NODECLEAN", self.nodeclean)
+        self.sacct_cluster = settings.get("SACCT_CLUSTER", self.sacct_cluster).strip()
         self.maxfilesize = settings.get("maxfilesize", self.maxfilesize)
 
         self._set_paths(
@@ -136,6 +139,14 @@ def print_stat(description: str, value: object) -> None:
     print(f"{description:<30}{value!s:>50}")
 
 
+def _sacct_command(settings: JobSettings) -> list[str]:
+    command = ["sacct", "-X"]
+    if settings.sacct_cluster:
+        command.extend(["-M", settings.sacct_cluster])
+    command.extend(["-j", settings.jobid, "-o", "submit", "-n"])
+    return command
+
+
 def _check_variables(settings: JobSettings) -> JobSettings:
 
     if not os.path.exists(settings.workdir):
@@ -173,7 +184,7 @@ def job_start(settings: JobSettings):
     settings.starttime = datetime.now(ZoneInfo(settings.timezone))
     settings.submittime = datetime.fromisoformat(
         run_command(
-            ["sacct", "-j", settings.jobid, "-o", "submit", "-n"],
+            _sacct_command(settings),
             settings,
             "sacct",
         ).strip()

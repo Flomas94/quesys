@@ -60,6 +60,7 @@ Without an explicit path, the first existing file among `quesys.conf`,
 TIMEZONE = UTC
 LOGIN_NODE = login.example.org
 NODECLEAN = /opt/slurm/nodeclean.sh
+SACCT_CLUSTER = my-cluster
 workdir = /scratch/{user}
 jobdir = {workdir}/{jobid}
 outdir = {submitdir}/{jobid}out
@@ -69,6 +70,10 @@ maxfilesize = 500M
 # Commands set to true are executed through LOGIN_NODE.
 sacct = true
 ```
+
+`sacct` is always called with `-X`, so only the job allocation is queried.
+When `SACCT_CLUSTER` is set, its value is passed as `-M <cluster>`; if it is
+empty or omitted, no cluster argument is added.
 
 Cluster-specific configuration files such as `quesys.conf` should not be
 committed to the repository. The package itself contains no cluster-specific
