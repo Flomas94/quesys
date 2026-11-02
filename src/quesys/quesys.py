@@ -96,9 +96,13 @@ class JobSettings:
     ) -> None:
         self.workdir = self._format_path(workdir_template)
         self.jobdir = self._format_path(jobdir_template)
-        self.outdir = self._format_path(outdir_template)
-        if not os.path.isabs(self.outdir):
-            self.outdir = os.path.join(self.submitdir, self.outdir)
+        self.outdir = self._resolve_outdir(outdir_template)
+
+    def _resolve_outdir(self, outdir_template: str) -> str:
+        outdir = self._format_path(outdir_template)
+        if os.path.isabs(outdir):
+            return outdir
+        return os.path.join(self.submitdir, outdir)
 
     def _format_path(self, value: str) -> str:
         try:
@@ -153,6 +157,7 @@ def _check_variables(settings: JobSettings) -> JobSettings:
         print(f"Invalid workdir! {settings.workdir} was not found.")
         sys.exit(1)
 
+    settings.outdir = settings._resolve_outdir(settings.outdir)
     jobdir_real = os.path.realpath(settings.jobdir)
     outdir_real = os.path.realpath(settings.outdir)
 
@@ -404,4 +409,6 @@ def gather(settings: JobSettings) -> None:
                     follow_symlinks=False,
                 )
             except shutil.SameFileError:
-                print(f"Warning: {output_object} is the same as {destination_path}. Skipping copy.")
+                print(
+                    f"Warning: {output_object} is the same as {destination_path}. Skipping copy."
+                )
