@@ -397,8 +397,11 @@ def gather(settings: JobSettings) -> None:
                 dirs_exist_ok=True,
             )
         else:
-            shutil.copy2(
-                output_object,
-                destination_path,
-                follow_symlinks=False,
-            )
+            try:
+                shutil.copy2(
+                    output_object,
+                    destination_path,
+                    follow_symlinks=False,
+                )
+            except shutil.SameFileError:
+                print(f"Warning: {output_object} is the same as {destination_path}. Skipping copy.")
