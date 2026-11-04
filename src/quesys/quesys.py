@@ -216,7 +216,7 @@ def job_end(settings: JobSettings):
     settings.endtime = datetime.now(ZoneInfo(settings.timezone))
     gather(settings)
     os.chdir(settings.workdir)
-    shutil.rmtree(settings.jobdir)
+    shutil.rmtree(settings.jobdir, ignore_errors=True)
     os.remove(os.path.join(settings.submitdir, f"cleanup.{settings.jobid}"))
     statistics(settings)
 
